@@ -1,5 +1,8 @@
 package br.ufu.aplicacao;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -12,35 +15,70 @@ import br.ufu.auxiliares.Pair;
  * "Algoritmos Online para Escalonamento de Tarefas em Sistemas Multiprocessados".
  * */
 public class OnlineOtimization {
-	public static final int		QTD_TAREFAS_DEFAULT 		= 10;
-	public static final int		QTD_MAQUINAS_DEFAULT 		= 3;
+	public static final int		QTD_TAREFAS_DEFAULT 		= 128;
+	public static final int		QTD_TAREFAS_TESTE 			= 10;
+	//public static final int		QTD_MAQUINAS_DEFAULT 		= 10;
 
 	public static final int		CARGA_INICIAL_DA_MAQUINA 	= 0;
 
 	public static final String 	LIST_SCHEDULING 			= "List-scheduling";
 	public static final String 	RANDOM 						= "Random";
+	public static final String 	ROUND_ROBIN 				= "Round-robin";
 
 	public static final int 	VETOR_TAREFA_CRESCENTE		= 1;
 	public static final int 	VETOR_TAREFA_NORMAL			= 0;
 	public static final int 	VETOR_TAREFA_DECRESCENTE	= -1;
 
+	public static final String 	PATH						= "E:\\Johnata_Arquivos\\UFU\\7º Período\\TCC I\\ArquivosGeradosAPP";
+	public static final String 	PATH_ATRASO					= PATH + "\\BoxPlotAtraso";
+	public static final String 	PATH_CARGA_TOTAL			= PATH + "\\BoxPlotCargaTotalPorMaquina";
+
+	public static final String LN							= "\n";
+
+	public static BufferedWriter writerResultado 					= null;
+
 	public static void main(String[] args) {
 		try {
-			int qtdTarefas = getValueFromArgs(args, 0, QTD_TAREFAS_DEFAULT);
-			int qtdMaquinas = getValueFromArgs(args, 1, QTD_MAQUINAS_DEFAULT);
+			//int qtdTarefas = getValueFromArgs(args, 0, QTD_TAREFAS_DEFAULT);
+			//int qtdMaquinas = getValueFromArgs(args, 1, QTD_MAQUINAS_DEFAULT);
 		
 			//int qtdTarefas = gerarQuantidadeAleatorias(100, 1000);
 			//int qtdMaquinas = gerarQuantidadeAleatorias(5, 50);
+			deleteFiles();
+			
+			writerResultado = criarBufferedWriter("ResultadoGeral.txt", PATH);
 
-			int [] vetCargaDasTarefass = getCargaInicial(qtdTarefas); //Cargas aleatórias entre 10 e 100
+			int qtdTarefas = QTD_TAREFAS_TESTE; //TODO: Colocar essa cara como default QTD_TAREFAS_DEFAULT;
+			int [] vetCargaDasTarefasBase = getCargaInicial(qtdTarefas);
 
-			execute(qtdMaquinas, qtdTarefas, vetCargaDasTarefass, VETOR_TAREFA_NORMAL);
-			execute(qtdMaquinas, qtdTarefas, vetCargaDasTarefass, VETOR_TAREFA_CRESCENTE);
-			execute(qtdMaquinas, qtdTarefas, vetCargaDasTarefass, VETOR_TAREFA_DECRESCENTE);
-
+			//A execução será feita considerando 8, 16 e 32 máquinas
+			//TODO: rancar esse for e colocar o de baixo, com 8, 16 e 32 maquinas
+			for (int qtdMaquinas = 2; qtdMaquinas <= 8; qtdMaquinas = qtdMaquinas * 2) {
+			//for (int qtdMaquinas = 8; qtdMaquinas <= 32; qtdMaquinas = qtdMaquinas * 2) {
+				int [] vetCargaDasTarefasClonado = cloneVetor(vetCargaDasTarefasBase);
+				
+				execute(qtdMaquinas, qtdTarefas, vetCargaDasTarefasClonado, VETOR_TAREFA_NORMAL);
+				execute(qtdMaquinas, qtdTarefas, vetCargaDasTarefasClonado, VETOR_TAREFA_CRESCENTE);
+				execute(qtdMaquinas, qtdTarefas, vetCargaDasTarefasClonado, VETOR_TAREFA_DECRESCENTE);
+			}
 		} catch (Exception e) {
 			System.out.println("Erro inesperado: " + e.getMessage());
 			e.printStackTrace();
+
+			//Se houver qualquer erro temos que fechar o writer do resultado geral antes de deletar os arquivos.
+			try {
+				closeBufferedWriter(writerResultado);
+			} catch (Exception ignored) {
+			} finally {
+				writerResultado = null;
+			}
+
+			deleteFiles();
+		} finally {
+			try {
+				closeBufferedWriter(writerResultado);
+			} catch (Exception ignored) {
+			}
 		}
 	}
 
@@ -69,18 +107,32 @@ public class OnlineOtimization {
 	}
 
 	/**
-	 * Método responsável por retornar um vetor de inteiros com valores aleatórios da carga de tarefas entre 10 e 100.
+	 * Método responsável por retornar um vetor de inteiros com valores aleatórios da carga de tarefas entre 100 e 1000.
 	 * A quantidade de valores será passada como parâmetros.
 	 * */
 	public static int[] getCargaInicial(int qtdTarefas) throws Exception {
-		int [] vetCargaDasTarefass = new int[qtdTarefas];
+		int [] vetCargaDasTarefas = new int[qtdTarefas];
 
 		for (int i = 0; i < qtdTarefas; i++) {
-			//Gerando carga de tarefa entre 10 e 100
-			vetCargaDasTarefass[i] = (int) (Math.random() * 90) + 10;
+			//Gerando carga de tarefa entre 100 e 1000
+			vetCargaDasTarefas[i] = (int) (Math.random() * 900) + 100;
 		}
 	
-		return vetCargaDasTarefass;
+		return vetCargaDasTarefas;
+	}
+
+	/**
+	 * Método responsável por fazer uma cópia do vetor inicial das tarefas, pois não podemos alterá-lo. 
+	 * =Ele será utilizado como base para todas as execuções. 
+	 * */
+	private static int[] cloneVetor(int[] vetCargaDasTarefasBase) throws Exception {
+		int [] vetCargaDasTarefasClonado = new int[vetCargaDasTarefasBase.length];
+
+		for (int i = 0; i < vetCargaDasTarefasBase.length; i++) {
+			vetCargaDasTarefasClonado[i] = vetCargaDasTarefasBase[i];
+		}
+
+		return vetCargaDasTarefasClonado;
 	}
 
 	/**
@@ -100,19 +152,9 @@ public class OnlineOtimization {
 
 		printCargaInicial(vetCargaDasTarefas, tipoOrdenacao);
 
-		try {
-			listSchedluling(qtdMaquinas, qtdTarefas, vetCargaDasTarefas);
-		} catch (Exception e) {
-			System.out.println("Erro ao executar o algoritmo " + LIST_SCHEDULING + ": " + e.getMessage());
-			e.printStackTrace();
-		}
-
-		try {
-			random(qtdMaquinas, qtdTarefas, vetCargaDasTarefas);
-		} catch (Exception e) {
-			System.out.println("Erro ao executar o algoritmo " + RANDOM + ": " + e.getMessage());
-			e.printStackTrace();
-		}
+		listSchedluling(qtdMaquinas, qtdTarefas, vetCargaDasTarefas, tipoOrdenacao);
+		random(qtdMaquinas, qtdTarefas, vetCargaDasTarefas, tipoOrdenacao);
+		roundRobin(qtdMaquinas, qtdTarefas, vetCargaDasTarefas, tipoOrdenacao);
 	}
 
 	/**
@@ -150,28 +192,29 @@ public class OnlineOtimization {
 	 * */
 	public static void printCargaInicial(int[] vetCargaDasTarefass, int tipoOrdenacao) throws Exception {
 		String text = "NORMAL";
-	
+		StringBuilder sbResult = new StringBuilder();
+
 		if (tipoOrdenacao == VETOR_TAREFA_CRESCENTE) {
 			text = "CRESCENTE";
 		} else if (tipoOrdenacao == VETOR_TAREFA_DECRESCENTE) {
 			text = "DECRESCENTE";
 		}
 
-		System.out.println("=============================================");
-		System.out.println("# Carga Inicial: " + text);
-		System.out.println("=============================================\n");
+		sbResult.append("=============================================" + LN);
+		sbResult.append("# Carga Inicial: " + text + LN);
+		sbResult.append("=============================================\n" + LN);
 
 		for (int i = 0; i < vetCargaDasTarefass.length; i++) {
-			System.out.println("Tarefa " + (i + 1) + ": " + vetCargaDasTarefass[i]);
+			sbResult.append("Tarefa " + (i + 1) + ": " + vetCargaDasTarefass[i] + LN);
 		}
-	
-		System.out.println("");
+
+		write(writerResultado, sbResult);
 	}
 
 	/**
 	 * Código responsável por executar o algoritmo de otimização online List-scheduling. 
 	 * */
-	public static void listSchedluling(int qtdMaquinas, int qtdTarefas, int [] vetCargaDasTarefas) throws Exception {
+	public static void listSchedluling(int qtdMaquinas, int qtdTarefas, int [] vetCargaDasTarefas, int tipoOrdenacao) throws Exception {
 		int [] vetExecucaoTarefaPorMaquina  = new int[qtdTarefas];
 		int [] vetCargaTotalPorMaquina = new int [qtdMaquinas];
 	
@@ -195,13 +238,13 @@ public class OnlineOtimization {
 			pq.add(newPair);
 		}
 
-		printResult(vetExecucaoTarefaPorMaquina, vetCargaDasTarefas, vetCargaTotalPorMaquina, LIST_SCHEDULING, qtdMaquinas);
+		printResult(vetExecucaoTarefaPorMaquina, vetCargaDasTarefas, vetCargaTotalPorMaquina, LIST_SCHEDULING, qtdMaquinas, tipoOrdenacao);
 	}
 
 	/**
 	 * Código responsável por executar o algoritmo de otimização online Random.
 	 * */
-	public static void random(int qtdMaquinas, int qtdTarefas, int [] vetCargaDasTarefas) throws Exception {
+	public static void random(int qtdMaquinas, int qtdTarefas, int [] vetCargaDasTarefas, int tipoOrdenacao) throws Exception {
 		int [] vetExecucaoTarefas  = new int[qtdTarefas];
 		int [] vetCargaTotalPorMaquina = new int [qtdMaquinas];
 
@@ -213,7 +256,32 @@ public class OnlineOtimization {
 			vetExecucaoTarefas[i] = codMaquina;
 		}
 
-		printResult(vetExecucaoTarefas, vetCargaDasTarefas, vetCargaTotalPorMaquina, RANDOM, qtdMaquinas);
+		printResult(vetExecucaoTarefas, vetCargaDasTarefas, vetCargaTotalPorMaquina, RANDOM, qtdMaquinas, tipoOrdenacao);
+	}
+
+	/**
+	 * Código responsável por executar o algoritmo de otimização online Round-robin.
+	 * */
+	private static void roundRobin(int qtdMaquinas, int qtdTarefas, int[] vetCargaDasTarefas, int tipoOrdenacao) throws Exception {
+		int [] vetExecucaoTarefas  = new int[qtdTarefas];
+		int [] vetCargaTotalPorMaquina = new int [qtdMaquinas];
+
+		int codMaquina = 0;
+		boolean isPrimeiraExecucao = true;
+
+		for (int i = 0; i < qtdTarefas; i++) {
+			int cargaTarefa = vetCargaDasTarefas[i];
+			
+			if (!isPrimeiraExecucao) {
+				codMaquina = getMaquinaRoundRobin(codMaquina, qtdMaquinas);
+			}
+			isPrimeiraExecucao = false;
+
+			vetCargaTotalPorMaquina[codMaquina] += cargaTarefa;
+			vetExecucaoTarefas[i] = codMaquina;
+		}
+
+		printResult(vetExecucaoTarefas, vetCargaDasTarefas, vetCargaTotalPorMaquina, ROUND_ROBIN, qtdMaquinas, tipoOrdenacao);
 	}
 
 	/**
@@ -239,9 +307,10 @@ public class OnlineOtimization {
 	 * Métrica 3: Soma de todas as cargas
 	 * Métrica 4: Utilizacao média
 	 * Métrica 5: Maior carga por máquina
-	 * Métrica 6: Atraso por tarefa
+	 * Métrica 6: Carga média de execução por máquina
+	 * Métrica 7: Atraso por tarefa
 	 * */
-	public static void printResult(int [] vetExecucaoTarefa, int [] vetCargaDasTarefas, int [] vetCargaTotalPorMaquina, String nomeAlgoritmo, int qtdMaquinas) throws Exception {
+	public static void printResult(int [] vetExecucaoTarefa, int [] vetCargaDasTarefas, int [] vetCargaTotalPorMaquina, String nomeAlgoritmo, int qtdMaquinas, int tipoOrdenacao) throws Exception {
 		int maiorCargaFinal = 0;
 		int codMaquinaMaiorCargaFinal = 0;
 		int cargaTotal = 0;
@@ -251,130 +320,176 @@ public class OnlineOtimization {
 
 		Map<Integer, Integer> mapMaiorCargaPorMaquina = new HashMap<Integer, Integer>();
 
-		System.out.println("=============================================");
-		System.out.println("# Resultados do algoritmo: " + nomeAlgoritmo);
-		System.out.println("=============================================\n");
+		BufferedWriter writerCargaTotalPorMaquina = null;
+		BufferedWriter writerAtraso = null;
 
-		for (int i = 0; i < vetExecucaoTarefa.length; i++) {
-			int codMaquina = vetExecucaoTarefa[i] + 1;
-			int tarefa = (i + 1);
-			int carga = vetCargaDasTarefas[i];
+		try {
+			writerCargaTotalPorMaquina = criarBufferedWriter(getFileName(nomeAlgoritmo, qtdMaquinas, tipoOrdenacao), PATH_CARGA_TOTAL);
+			writerAtraso = criarBufferedWriter(getFileName(nomeAlgoritmo, qtdMaquinas, tipoOrdenacao), PATH_ATRASO);
 
-			StringBuilder sb = new StringBuilder();
-			sb.append("Tarefa " + tarefa + ": ");
-			sb.append("Carga " + carga + " -> ");
-			sb.append("Executada na maquina " + codMaquina);
+			StringBuilder sbResult = new StringBuilder();
 
-			System.out.println(sb.toString());
+			sbResult.append("===================================================" + LN);
+			sbResult.append("# Resultados do algoritmo: " + nomeAlgoritmo + LN);
+			sbResult.append("===================================================\n");
 
-			populaMapMaquina(mapMaquinaPorTarefa, codMaquina, tarefa);
-			populaMapMaquina(mapMaquinaPorCarga, codMaquina, carga);
-		
-			//Fazendo esse teste aqui para aproveitar o laco das tarefas executadas, assim ja consigo saber qual a maior carga por maquina
-			if (!mapMaiorCargaPorMaquina.containsKey(codMaquina) || mapMaiorCargaPorMaquina.get(codMaquina) < carga) {
-				mapMaiorCargaPorMaquina.put(codMaquina, carga);
-			}
-		}
-		System.out.println("");
+			write(writerResultado, sbResult);
 
-		System.out.println("=============================================");
-		System.out.println("# Resultado Final");
-		System.out.println("=============================================\n");
+			int maquinaCorrenteEsperada = 1;
 
-		System.out.println("=============================================");
-		System.out.println("# Metrica 1: Carga total por máquina");
-		System.out.println("=============================================\n");
-	
-		for (int i = 0; i < vetCargaTotalPorMaquina.length; i++) {
-			int codMaquina = i + 1;
+			for (int i = 0; i < vetExecucaoTarefa.length; i++) {
+				int codMaquina = vetExecucaoTarefa[i] + 1;
+				
+				//Se a maquina esperada não estiver sendo executada neste momento significa
+				//que ela não executará nenhuma tarefa. Assim, colocamos ela na map de maior 
+				//carga por tarefa: "mapMaiorCargaPorMaquina", para que ele seja printada no 
+				//resultado, porém sem carga.
+				if (maquinaCorrenteEsperada != codMaquina) {
+					for (int j = maquinaCorrenteEsperada; j < codMaquina; j++) {
+						mapMaiorCargaPorMaquina.put(j, 0);
+					}
+				}
+				
+				int tarefa = (i + 1);
+				int carga = vetCargaDasTarefas[i];
 
-			if (maiorCargaFinal == 0 || maiorCargaFinal < vetCargaTotalPorMaquina[i]) {
-				maiorCargaFinal = vetCargaTotalPorMaquina[i];
-				codMaquinaMaiorCargaFinal = codMaquina;
-			}
+				sbResult.append("Tarefa " + tarefa + ": ");
+				sbResult.append("Carga " + carga + " -> ");
+				sbResult.append("Executada na maquina " + codMaquina);
 
-			StringBuilder sb = new StringBuilder();
-			sb.append("Máquina " + codMaquina + ": ");
-			sb.append("Carga Total -> " + vetCargaTotalPorMaquina[i] + "\n");
+				write(writerResultado, sbResult);
 
-			listarDadosPorMaquina(mapMaquinaPorTarefa, codMaquina, sb, "Tarefas");
-			listarDadosPorMaquina(mapMaquinaPorCarga, codMaquina, sb, "Cargas");
-
-			System.out.println(sb.toString());
-		
-			cargaTotal += vetCargaTotalPorMaquina[i];
-		}
-	
-		System.out.println("=============================================");
-		System.out.println("# Metrica 2: Maior carga final");
-		System.out.println("=============================================\n");
-	
-		System.out.println("Máquina " + codMaquinaMaiorCargaFinal +  ": Carga -> " + maiorCargaFinal + "\n");
-	
-		System.out.println("=============================================");
-		System.out.println("# Metrica 3: Soma de todas as cargas");
-		System.out.println("=============================================\n");
-	
-		System.out.println("Total das cargas -> " + cargaTotal + "\n");
-	
-		System.out.println("=============================================");
-		System.out.println("# Metrica 4: Utilizacao média");
-		System.out.println("=============================================\n");
-	
-		System.out.println("Media -> " + (double) cargaTotal / (maiorCargaFinal * qtdMaquinas) + "\n");
-
-		System.out.println("=============================================");
-		System.out.println("# Metrica 5: Maior carga por máquina");
-		System.out.println("=============================================\n");
-
-		for (Map.Entry<Integer, Integer> map : mapMaiorCargaPorMaquina.entrySet()) {
-			StringBuilder sb = new StringBuilder();
-			sb.append("Máquina " + map.getKey() + ": ");
-			sb.append("Maior Carga -> " + map.getValue() + "\n");
-
-			System.out.println(sb.toString());
-		}
-
-		System.out.println("=============================================");
-		System.out.println("# Metrica 6: Atraso por tarefa");
-		System.out.println("=============================================\n");
-
-		for (int i = 0; i < vetCargaTotalPorMaquina.length; i++) {
-			int codMaquina = i + 1;
-
-			List<Integer> listTarefas = mapMaquinaPorTarefa.get(codMaquina);
-			if (listTarefas == null) {
-				throw new Exception("Falha ao buscar as tarefas executadas por máquina.");
-			}
-
-			List<Integer> listCargas = mapMaquinaPorCarga.get(codMaquina);
-			if (listCargas == null) {
-				throw new Exception("Falha ao buscar as cargas executadas por máquina.");
-			}
-
-			String listaTarefasexec = "";
-			int qtdAtrasoPorTarefa = 0;
-
-			StringBuilder sb = new StringBuilder();
-			sb.append("Máquina " + codMaquina + ":\n");
-
-			for (int j = 0; j < listTarefas.size(); j++) {
-				int tarefa = listTarefas.get(j);
-				int carga = listCargas.get(j);
-
-				String texto = listaTarefasexec.isEmpty() ? "(Primeira Execução)" : "(Esperou tarefa(s): " + listaTarefasexec + ")";
-				sb.append("Tarefa " + tarefa + ": " + qtdAtrasoPorTarefa + " " + texto + "\n");
-
-				if (listaTarefasexec.isEmpty()) {
-					listaTarefasexec += tarefa;
-				} else {
-					listaTarefasexec += ", " + tarefa;
+				populaMapMaquina(mapMaquinaPorTarefa, codMaquina, tarefa);
+				populaMapMaquina(mapMaquinaPorCarga, codMaquina, carga);
+			
+				//Fazendo esse teste aqui para aproveitar o laco das tarefas executadas, assim ja consigo saber qual a maior carga por maquina
+				if (!mapMaiorCargaPorMaquina.containsKey(codMaquina) || mapMaiorCargaPorMaquina.get(codMaquina) < carga) {
+					mapMaiorCargaPorMaquina.put(codMaquina, carga);
 				}
 
-				qtdAtrasoPorTarefa += carga;
+				maquinaCorrenteEsperada++;
+			}
+			sbResult.append("" + LN);
+
+			sbResult.append("===================================================" + LN);
+			sbResult.append("# Resultado Final" + LN);
+			sbResult.append("===================================================\n" + LN);
+
+			sbResult.append("===================================================" + LN);
+			sbResult.append("# Metrica 1: Carga total por máquina" + LN);
+			sbResult.append("===================================================\n");
+
+			write(writerResultado, sbResult);
+		
+			for (int i = 0; i < vetCargaTotalPorMaquina.length; i++) {
+				int codMaquina = i + 1;
+
+				if (maiorCargaFinal == 0 || maiorCargaFinal < vetCargaTotalPorMaquina[i]) {
+					maiorCargaFinal = vetCargaTotalPorMaquina[i];
+					codMaquinaMaiorCargaFinal = codMaquina;
+				}
+
+				sbResult.append("Máquina " + codMaquina + ": ");
+				sbResult.append("Carga Total -> " + vetCargaTotalPorMaquina[i] + "\n");
+
+				listarDadosPorMaquina(mapMaquinaPorTarefa, codMaquina, sbResult, "Tarefas");
+				listarDadosPorMaquina(mapMaquinaPorCarga, codMaquina, sbResult, "Cargas");
+
+				write(writerResultado, sbResult);
+
+				cargaTotal += vetCargaTotalPorMaquina[i];
+
+				writeCargaTotal(writerCargaTotalPorMaquina, codMaquina, vetCargaTotalPorMaquina[i]);
 			}
 
-			System.out.println(sb.toString());
+			sbResult.append("===================================================" + LN);
+			sbResult.append("# Metrica 2: Maior carga final" + LN);
+			sbResult.append("===================================================\n" + LN);
+		
+			sbResult.append("Máquina " + codMaquinaMaiorCargaFinal +  ": Carga -> " + maiorCargaFinal + "\n" + LN);
+		
+			sbResult.append("===================================================" + LN);
+			sbResult.append("# Metrica 3: Soma de todas as cargas" + LN);
+			sbResult.append("===================================================\n" + LN);
+		
+			sbResult.append("Total das cargas -> " + cargaTotal + "\n" + LN);
+		
+			sbResult.append("===================================================" + LN);
+			sbResult.append("# Metrica 4: Utilizacao média" + LN);
+			sbResult.append("===================================================\n" + LN);
+		
+			sbResult.append("Media -> " + (double) cargaTotal / (maiorCargaFinal * qtdMaquinas) + "\n" + LN);
+
+			sbResult.append("===================================================" + LN);
+			sbResult.append("# Metrica 5: Maior carga por máquina" + LN);
+			sbResult.append("===================================================\n");
+
+			write(writerResultado, sbResult);
+
+			for (Map.Entry<Integer, Integer> map : mapMaiorCargaPorMaquina.entrySet()) {
+				sbResult.append("Máquina " + map.getKey() + ": ");
+				sbResult.append("Maior Carga -> " + map.getValue() + "\n");
+
+				write(writerResultado, sbResult);
+			}
+
+			sbResult.append("===================================================" + LN);
+			sbResult.append("# Metrica 6: Carga média de execução por máquina" + LN);
+			sbResult.append("===================================================\n" + LN);
+
+			sbResult.append("Media -> " + (double) cargaTotal / qtdMaquinas + "\n" + LN);
+
+			sbResult.append("===================================================" + LN);
+			sbResult.append("# Metrica 7: Atraso por tarefa" + LN);
+			sbResult.append("===================================================\n" + LN);
+
+			for (int i = 0; i < vetCargaTotalPorMaquina.length; i++) {
+				int codMaquina = i + 1;
+
+				List<Integer> listTarefas = mapMaquinaPorTarefa.get(codMaquina);
+				List<Integer> listCargas = mapMaquinaPorCarga.get(codMaquina);
+
+				if (listTarefas == null || listCargas == null) {
+					sbResult.append("Máquina " + codMaquina + ":\n");
+					sbResult.append("Sem Tarefas!\n");
+
+					write(writerResultado, sbResult);
+					continue;
+				}
+
+				String listaTarefasexec = "";
+				int qtdAtrasoPorTarefa = 0;
+
+				sbResult.append("Máquina " + codMaquina + ":\n");
+
+				for (int j = 0; j < listTarefas.size(); j++) {
+					int tarefa = listTarefas.get(j);
+					int carga = listCargas.get(j);
+
+					String texto = listaTarefasexec.isEmpty() ? "(Primeira Execução)" : "(Esperou tarefa(s): " + listaTarefasexec + ")";
+					sbResult.append("Tarefa " + tarefa + ": " + qtdAtrasoPorTarefa + " " + texto + "\n");
+
+					writeAtraso(writerAtraso, tarefa, qtdAtrasoPorTarefa);
+
+					if (listaTarefasexec.isEmpty()) {
+						listaTarefasexec += tarefa;
+					} else {
+						listaTarefasexec += ", " + tarefa;
+					}
+
+					qtdAtrasoPorTarefa += carga;
+				}
+
+				write(writerResultado, sbResult);
+			}
+		} finally {
+			try {
+				closeBufferedWriter(writerCargaTotalPorMaquina);
+				closeBufferedWriter(writerAtraso);
+			} catch (Exception e2) {
+				System.out.println("Erro inesperado ao descarregar no arquivo: " + e2.getMessage());
+				e2.printStackTrace();
+			}
 		}
 	}
 
@@ -417,7 +532,8 @@ public class OnlineOtimization {
 		
 			sb.append(" ]\n");
 		} else {
-			throw new Exception("Falha ao buscar as " + textoChave + " executadas por máquina.");
+			sb.append("[ ");
+			sb.append(" ]\n");
 		}
 	}
 
@@ -433,6 +549,126 @@ public class OnlineOtimization {
 		}
 
 		return codMaquina;
+	}
+
+	/**
+	 * Método auxiliar do algoritmo de otimização online Round-robin. Este método irá devoler o código de uma máquina para que 
+	 * a tarefa possa ser executada na mesma, considerando a lógica circular deste algoritmo.
+	 * */
+	private static int getMaquinaRoundRobin(int codMaquina, int qtdMaquinas) throws Exception {
+		int proximaMaquina = 0;
+
+		if ((codMaquina + 1) < qtdMaquinas) {
+			proximaMaquina = codMaquina + 1;
+		}
+
+		return proximaMaquina;
+	}
+
+	/**
+	 * Método responsável por criar o BufferedWriter.
+	 * */
+	public static BufferedWriter criarBufferedWriter(String fileName, String path) throws Exception {
+		File file = new File(path);
+
+		if (!file.exists()) {
+			file.mkdir();
+		}
+
+		return new BufferedWriter(new FileWriter(new File(path, fileName)));
+	}
+	
+	/**
+	 * Método responsável por fechar o BufferedWriter.
+	 * */
+	public static void closeBufferedWriter(BufferedWriter writer) throws Exception {
+		if (writer != null) {
+			writer.flush();
+			writer.close();
+		}
+	}
+
+	/**
+	 * Método responsável por montar o nome do arquivo de acordo com os parâmetros: tipo do algoritmo, tipo da ordenação, quantidade de 
+	 * máquinas.
+	 * */
+	public static String getFileName(String nomeAlgoritmo, int qtdMaquinas, int tipoOrdenacao) throws Exception {
+		return nomeAlgoritmo + "_" + qtdMaquinas + "_Maquinas_Ordenacao_" + getNomeOrdenacao(tipoOrdenacao) + ".txt";
+	}
+
+	/**
+	 * Método responsável por pegar o nome da ordenação de acordo com o tipo passado como parâmetro.
+	 * */
+	public static String getNomeOrdenacao(int tipoOrdenacao) throws Exception {
+		String nomeOrdenacao = "";
+		
+		if (tipoOrdenacao == VETOR_TAREFA_NORMAL) {
+			nomeOrdenacao = "1_Normal";
+
+		} else if (tipoOrdenacao == VETOR_TAREFA_CRESCENTE) {
+			nomeOrdenacao = "2_Crescente";
+
+		} else if (tipoOrdenacao == VETOR_TAREFA_DECRESCENTE) {
+			nomeOrdenacao = "3_Decrescente";
+
+		} else {
+			throw new Exception("Tipo de ordenação informado inválido: " + tipoOrdenacao + ".");
+		}
+		
+		return nomeOrdenacao;
+	}
+
+	/**
+	 * Método responsável por descarregar o StringBuilder no arquivo.
+	 * */
+	public static void write(BufferedWriter writer, StringBuilder sb) throws Exception {
+		System.out.println(sb.toString());
+
+		if (writer != null) {
+			writer.write(sb.toString() + LN);
+			sb.setLength(0);
+		}
+	}
+
+	/**
+	 * Método responsável por descarregar o atraso no arquivo.
+	 * */
+	public static void writeAtraso(BufferedWriter writerAtraso, int tarefa, int qtdAtrasoPorTarefa) throws Exception {
+		writerAtraso.write(tarefa + " - " + qtdAtrasoPorTarefa + "\n");
+	}
+
+	/**
+	 * Método responsável por descarregar a carga total no arquivo.
+	 * */
+	private static void writeCargaTotal(BufferedWriter writerCargaTotalPorMaquina, int codMaquina, int cargaTotalPorMaquina) throws Exception {
+		writerCargaTotalPorMaquina.write(codMaquina + " - " + cargaTotalPorMaquina + "\n");
+	}
+
+	/**
+	 * Método responsável por deletar os arquivos gerados se qualquer erro ocorrer ou no inicio de cada geração.
+	 * */
+	public static void deleteFiles() {
+		try {
+			File file = new File(PATH);
+			File [] files = file.listFiles();
+
+			for (int i = 0; i < files.length; i++) {
+				File arquivo = files[i];
+
+				if (arquivo.exists()) {
+					if (arquivo.isDirectory()) {
+						File [] arquivos = arquivo.listFiles();
+					
+						for (int j = 0; j < arquivos.length; j++) {
+							arquivos[j].delete();
+						}
+					}
+
+					arquivo.delete();		
+				}
+			}
+		} catch (Exception ignored) {
+		}
 	}
 
 	/**
